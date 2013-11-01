@@ -115,13 +115,14 @@
     this.reset();
   }
 
+  var tryStack = [];
+
   Context.prototype = {
     constructor: Context,
 
     reset: function() {
       this.next = 0;
       this.sent = void 0;
-      this.tryStack = [];
       this.done = false;
       this.delegate = null;
 
@@ -151,43 +152,44 @@
 
     pushTry: function(catchLoc, finallyLoc, finallyTempVar) {
       if (finallyLoc) {
-        this.tryStack.push({
+        tryStack.push({
+          context: this,
           finallyLoc: finallyLoc,
           finallyTempVar: finallyTempVar
         });
       }
 
       if (catchLoc) {
-        this.tryStack.push({
+        tryStack.push({
+          context: this,
           catchLoc: catchLoc
         });
       }
     },
 
     popCatch: function(catchLoc) {
-      var lastIndex = this.tryStack.length - 1;
-      var entry = this.tryStack[lastIndex];
+      var lastIndex = tryStack.length - 1;
+      var entry = tryStack[lastIndex];
 
       if (entry && entry.catchLoc === catchLoc) {
-        this.tryStack.length = lastIndex;
+        tryStack.length = lastIndex;
       }
     },
 
     popFinally: function(finallyLoc) {
-      var lastIndex = this.tryStack.length - 1;
-      var entry = this.tryStack[lastIndex];
+      var lastIndex = tryStack.length - 1;
+      var entry = tryStack[lastIndex];
 
       if (!entry || !hasOwn.call(entry, "finallyLoc")) {
-        entry = this.tryStack[--lastIndex];
+        entry = tryStack[--lastIndex];
       }
 
       if (entry && entry.finallyLoc === finallyLoc) {
-        this.tryStack.length = lastIndex;
+        tryStack.length = lastIndex;
       }
     },
 
     dispatchException: function(exception) {
-      var entry;
       var finallyEntries = [];
       var dispatched = false;
 
@@ -195,11 +197,13 @@
         throw exception;
       }
 
-      for (var i = this.tryStack.length - 1; i >= 0; --i) {
-        entry = this.tryStack[i];
+      for (var i = tryStack.length - 1; i >= 0; --i) {
+        var entry = tryStack[i];
+        var context = entry.context;
+
         if (entry.catchLoc) {
-          this.thrown = exception;
-          this.next = entry.catchLoc;
+          context.thrown = exception;
+          context.next = entry.catchLoc;
           dispatched = true;
           break;
         } else if (entry.finallyLoc) {
@@ -213,8 +217,9 @@
       }
 
       while ((entry = finallyEntries.pop())) {
-        this[entry.finallyTempVar] = this.next;
-        this.next = entry.finallyLoc;
+        context = entry.context;
+        context[entry.finallyTempVar] = context.next;
+        context.next = entry.finallyLoc;
       }
     },
 
